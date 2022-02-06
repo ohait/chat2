@@ -7,10 +7,7 @@ import it.oha.chat.ipc.Subscribe;
 import it.oha.util.Addr;
 import it.oha.util.Log;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.Socket;
 
 
@@ -34,8 +31,20 @@ public class Client implements AutoCloseable {
     }
 
     private void readTerminal(InputStream in) {
-        BufferedReader obj = new BufferedReader(new InputStreamReader(in));
-
+        try (
+                BufferedReader obj = new BufferedReader(new InputStreamReader(in));
+        ) {
+            var parser = new CmdParser();
+            while (true) {
+                String cmd = obj.readLine();
+                var p = parser.parse(cmd);
+                if (p != null) conn.emit(p);
+            }
+        } catch (EOFException e) {
+            // exit quietly
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private Connection conn;
