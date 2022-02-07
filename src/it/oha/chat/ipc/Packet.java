@@ -8,7 +8,7 @@ import java.io.Serializable;
 
 public abstract class Packet implements Serializable {
 
-    public abstract void onServer(Server ser, Connection c);
+    public abstract Error onServer(Server ser, Connection c);
 
     public abstract void onClient(Client cli, Connection c);
 }

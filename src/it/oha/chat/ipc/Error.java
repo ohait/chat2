@@ -5,11 +5,15 @@ import it.oha.chat.Connection;
 import it.oha.chat.Server;
 
 public class Error extends Packet {
+    public Error(String fmt, Object... args) {
+        this.message = String.format(fmt, args);
+    }
+
     public String message;
 
     @Override
-    public void onServer(Server ser, Connection c) {
-        // ignore
+    public Error onServer(Server ser, Connection c) {
+        return null;
     }
 
     @Override

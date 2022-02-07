@@ -1,5 +1,6 @@
 package it.oha.chat;
 
+import it.oha.chat.ipc.Disconnect;
 import it.oha.chat.ipc.Packet;
 import it.oha.util.Log;
 
@@ -26,7 +27,7 @@ public class Connection implements AutoCloseable {
     }
 
     public void close() throws IOException {
-        sock.close();
+        outbox.offer(new Disconnect());
     }
 
     /**
@@ -36,17 +37,14 @@ public class Connection implements AutoCloseable {
      * @return false if packet can't be queued
      */
     synchronized public boolean emit(Packet p) {
+        if (p == null) {
+            new IllegalArgumentException("null packet, use close()");
+        }
         if (sock.isOutputShutdown()) return false;
         return outbox.offer(p); // false if queue full
     }
 
     public Packet read() throws IOException {
-        synchronized (this) {
-            if (in == null) {
-                in = new ObjectInputStream(sock.getInputStream());
-                Log.debug("ObjectInputStream created from " + sock.getRemoteSocketAddress());
-            }
-        }
         try {
             var p = (Packet) in.readObject();
             Log.debug("got packet " + p);
@@ -58,6 +56,8 @@ public class Connection implements AutoCloseable {
 
     public void recvLoop(Consumer<Packet> c) {
         try {
+            in = new ObjectInputStream(sock.getInputStream());
+            Log.debug("ObjectInputStream created from " + sock.getRemoteSocketAddress());
             while (!sock.isInputShutdown()) {
                 var p = read();
                 c.accept(p);
@@ -66,6 +66,9 @@ public class Connection implements AutoCloseable {
             Log.info("client going away: " + e.getMessage());
         } catch (IOException e) {
             e.printStackTrace();
+        }
+        synchronized (this) {
+            notifyAll();
         }
 
         try {
@@ -89,10 +92,8 @@ public class Connection implements AutoCloseable {
         try {
             while (true) {
                 Packet p = outbox.poll(180, TimeUnit.SECONDS);
-                if (p == null) {
-                    break;
-                }
                 out.writeObject(p);
+                if (p.getClass() == Disconnect.class) break;
             }
         } catch (EOFException | SocketException e) {
             Log.info("client going away: " + e.getMessage());
@@ -100,6 +101,10 @@ public class Connection implements AutoCloseable {
             e.printStackTrace();
         } catch (InterruptedException e) {
             e.printStackTrace();
+        }
+
+        synchronized (this) {
+            notifyAll();
         }
 
         try {

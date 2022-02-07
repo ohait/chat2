@@ -3,6 +3,7 @@ package it.oha.chat.ipc;
 import it.oha.chat.Client;
 import it.oha.chat.Connection;
 import it.oha.chat.Server;
+import it.oha.util.Log;
 
 import java.io.IOException;
 import java.util.Date;
@@ -17,18 +18,17 @@ public class Message extends TopicPacket {
     }
 
     @Override
-    public void onServer(Server ser, Connection c) {
+    public Error onServer(Server ser, Connection c) {
         this.time = new Date(); // set time to server receive time
         this.sender = c.name;
+        Log.debug("broadcasting " + this);
         ser.topic(this.topic).broadcast(this);
-        if (this.topic != "all") {
-            ser.topic("all").broadcast(this);
-        }
         try {
             ser.getStore().store(this);
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return null;
     }
 
     @Override

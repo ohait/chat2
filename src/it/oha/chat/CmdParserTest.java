@@ -1,5 +1,6 @@
 package it.oha.chat;
 
+import it.oha.chat.ipc.Disconnect;
 import it.oha.chat.ipc.Message;
 import org.junit.jupiter.api.Test;
 

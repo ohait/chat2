@@ -21,12 +21,13 @@ public class Client implements AutoCloseable {
             var name = args[0];
             var addr = new Addr(args[1]);
             var cli = new Client(name);
-            cli.connect(addr.host, addr.port);
-
+            var loop = cli.connect(addr.host, addr.port);
             new Thread(() -> cli.readTerminal(System.in), "term").start();
-
+            loop.run();
         } catch (Throwable e) {
             e.printStackTrace();
+        } finally {
+            System.exit(0); // TODO
         }
     }
 
@@ -34,16 +35,20 @@ public class Client implements AutoCloseable {
         try (
                 BufferedReader obj = new BufferedReader(new InputStreamReader(in));
         ) {
+            Log.debug("term waiting for input");
             var parser = new CmdParser();
             while (true) {
                 String cmd = obj.readLine();
                 var p = parser.parse(cmd);
+                Log.debug("cmd: %s", p);
                 if (p != null) conn.emit(p);
             }
         } catch (EOFException e) {
             // exit quietly
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            Log.info("term exit");
         }
     }
 
@@ -54,7 +59,7 @@ public class Client implements AutoCloseable {
         this.token = token;
     }
 
-    public void connect(String host, int port) throws IOException {
+    public Runnable connect(String host, int port) throws IOException {
         Log.info("connecting to %s:%d", host, port);
         var sock = new Socket(host, port);
         conn = new Connection(sock);
@@ -62,8 +67,8 @@ public class Client implements AutoCloseable {
         conn.startRecvLoop("recv", (p) -> {
             p.onClient(Client.this, conn);
         });
-        conn.startSendLoop("send");
         conn.emit(new Login(token));
+        return () -> conn.sendLoop();
     }
 
     public void onMessage(Message m) {

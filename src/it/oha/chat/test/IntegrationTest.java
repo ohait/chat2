@@ -2,12 +2,8 @@ package it.oha.chat.test;
 
 import it.oha.chat.Client;
 import it.oha.chat.Connection;
-import it.oha.chat.Disconnect;
 import it.oha.chat.Server;
-import it.oha.chat.ipc.Login;
-import it.oha.chat.ipc.Message;
-import it.oha.chat.ipc.Packet;
-import it.oha.chat.ipc.Subscribe;
+import it.oha.chat.ipc.*;
 import it.oha.util.Log;
 import org.junit.jupiter.api.Test;
 
@@ -43,7 +39,8 @@ public class IntegrationTest {
 
             var cli = new Client("token1");
 
-            cli.connect("127.0.0.1", server.getLocalPort());
+            var loop = cli.connect("127.0.0.1", server.getLocalPort());
+            new Thread(loop, "send").start();
             cli.subscribe("t1");
             cli.message("t1", "echo");
 
@@ -68,7 +65,9 @@ public class IntegrationTest {
     public void testServer() {
         try (var s = new Server("localhost", 0, new Server.NoStore())
         ) {
-            new Thread(s, "server").start();
+            new Thread(() -> {
+                s.acceptLoop();
+            }, "server").start();
             Log.notice("server: " + s);
 
             var sock = new Socket("127.0.0.1", s.getPort());

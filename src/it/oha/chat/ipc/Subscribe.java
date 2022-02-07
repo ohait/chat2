@@ -11,8 +11,9 @@ public class Subscribe extends TopicPacket {
     }
 
     @Override
-    public void onServer(Server ser, Connection c) {
+    public Error onServer(Server ser, Connection c) {
         ser.topic(topic).subscribe(c::emit);
+        return null;
     }
 
     @Override

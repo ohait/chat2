@@ -1,5 +1,6 @@
 package it.oha.chat;
 
+import it.oha.chat.ipc.Disconnect;
 import it.oha.chat.ipc.Packet;
 import it.oha.chat.ipc.TopicPacket;
 import it.oha.util.Addr;
@@ -18,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 
-public class Server implements Runnable, AutoCloseable {
+public class Server implements AutoCloseable {
     public static void main(String[] args) {
         if (args.length < 1) {
             System.err.println("Usage: Client <host:port> <storage dir>");
@@ -37,10 +38,13 @@ public class Server implements Runnable, AutoCloseable {
                 try {
                     Log.warning("signal " + sig);
                     ser.close();
-                } catch (IOException e) {
-                    // ignore
+                } catch (Throwable e) {
+                    e.printStackTrace();
                 }
             });
+            new Thread(() -> {
+                ser.acceptLoop();
+            }, "accept").start();
 
             ser.waitDone(); // wait for close() and all client gone
 
@@ -77,10 +81,16 @@ public class Server implements Runnable, AutoCloseable {
      * @throws IOException
      * @throws InterruptedException
      */
-    public void close() throws IOException {
+    public void close() throws IOException, InterruptedException {
         sock.close();
+        Log.debug("sending Disconnect to all");
         for (Connection cli : clients.values()) {
+            Log.debug("sending Disconnect to %s", cli);
             cli.emit(new Disconnect()); // graceful
+        }
+        Thread.sleep(1000);
+        for (Connection cli : clients.values()) {
+            cli.emit(null);
         }
     }
 
@@ -101,32 +111,32 @@ public class Server implements Runnable, AutoCloseable {
     /**
      * main accept loop, will further spawn more threads for each connection
      */
-    public void run() {
+    public void acceptLoop() {
         try {
             while (!sock.isClosed()) {
                 var remote = sock.accept();
                 // TODO(oha): this will require protection from DDOS
                 var addr = remote.getRemoteSocketAddress();
-                var conn = new Connection(remote);
-                clients.put(addr, conn);
+                Log.info("connection from %s", addr);
+                new Thread(() -> {
+                    try {
+                        var conn = new Connection(remote);
+                        clients.put(addr, conn);
+                        conn.startSendLoop(addr.toString() + "-send");
 
-                conn.startSendLoop(addr.toString() + "-send");
-
-                new Thread(addr.toString() + "-read") {
-                    @Override
-                    public void run() {
-                        try {
-                            conn.recvLoop((p) -> {
-                                p.onServer(Server.this, conn);
-                            });
-                        } finally {
-                            clients.remove(addr);
-                            synchronized (Server.this) {
-                                Server.this.notifyAll();
-                            }
+                        conn.recvLoop((p) -> {
+                            p.onServer(Server.this, conn);
+                        });
+                    } catch (Throwable e) {
+                        e.printStackTrace();
+                    } finally {
+                        Log.warning("disconnected %s", addr);
+                        clients.remove(addr);
+                        synchronized (Server.this) {
+                            Server.this.notifyAll();
                         }
                     }
-                }.start();
+                }, addr.toString() + "-read").start();
             }
         } catch (IOException e) {
             if (sock.isClosed()) return; // ignore when closing
@@ -157,8 +167,10 @@ public class Server implements Runnable, AutoCloseable {
         }
 
         public void broadcast(Packet p) {
+            Log.debug("broadcasting " + p);
             subscriptions.forEach((id, emitter) -> {
                 var ok = emitter.apply(p);
+                Log.debug("broadcast to %s: %s", id, ok);
                 if (!ok) {
                     subscriptions.remove(id);
                 }

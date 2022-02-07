@@ -1,5 +1,6 @@
 package it.oha.chat;
 
+import it.oha.chat.ipc.Disconnect;
 import it.oha.chat.ipc.Message;
 import it.oha.chat.ipc.Packet;
 import it.oha.util.Log;
